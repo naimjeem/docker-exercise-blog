@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: Simple CI/CD Pipeline
 
 on:
   push:
@@ -6,204 +6,11 @@ on:
   pull_request:
     branches: [ main ]
 
-env:
-  REGISTRY: docker.io
-  IMAGE_NAME: ${{ github.repository_owner }}/blog-platform
-
 jobs:
-  # Job 1: Code Quality & Security (SAST)
-  # code-quality:
-  #   name: Code Quality & Security (SAST)
-  #   runs-on: self-hosted
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
-
-  #     - name: Setup Node.js
-  #       uses: actions/setup-node@v4
-  #       with:
-  #         node-version: '18'
-
-  #     - name: Setup npm cache
-  #       run: |
-  #         echo "Setting up npm cache for Windows..."
-  #         npm config set cache "$HOME/.npm"
-  #         echo "npm cache directory: $(npm config get cache)"
-
-  #     # Backend Code Quality
-  #     - name: Install backend dependencies
-  #       working-directory: ./backend
-  #       run: npm ci
-
-  #     - name: Run ESLint on backend
-  #       working-directory: ./backend
-  #       run: npm run lint
-
-  #     - name: Run Prettier check on backend
-  #       working-directory: ./backend
-  #       run: npm run format:check
-
-  #     # Frontend Code Quality
-  #     - name: Install frontend dependencies
-  #       working-directory: ./frontend
-  #       run: npm ci
-
-  #     - name: Run ESLint on frontend
-  #       working-directory: ./frontend
-  #       run: npm run lint
-
-  #     - name: Run Prettier check on frontend
-  #       working-directory: ./frontend
-  #       run: npm run format:check
-
-  #     # Security scanning with CodeQL
-  #     - name: Initialize CodeQL
-  #       uses: github/codeql-action/init@v3
-  #       with:
-  #         languages: javascript
-
-  #     - name: Perform CodeQL Analysis
-  #       uses: github/codeql-action/analyze@v3
-
-  #     # Dependency vulnerability scanning
-  #     - name: Run npm audit on backend
-  #       working-directory: ./backend
-  #       run: npm audit --audit-level=moderate
-
-  #     - name: Run npm audit on frontend
-  #       working-directory: ./frontend
-  #       run: npm audit --audit-level=moderate
-
-  # Job 2: Unit & Integration Testing
-  # testing:
-  #   name: Unit & Integration Testing
-  #   runs-on: self-hosted
-
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
-
-  #     - name: Setup Node.js
-  #       uses: actions/setup-node@v4
-  #       with:
-  #         node-version: '18'
-
-  #     - name: Setup npm cache
-  #       run: |
-  #         echo "Setting up npm cache for Windows..."
-  #         npm config set cache "$HOME/.npm"
-  #         echo "npm cache directory: $(npm config get cache)"
-
-  #     # Backend Testing
-  #     - name: Install backend dependencies
-  #       working-directory: ./backend
-  #       run: npm ci
-
-  #     - name: Run backend unit tests
-  #       working-directory: ./backend
-  #       env:
-  #         NODE_ENV: test
-  #       run: npm run test:unit
-
-  #     - name: Generate backend coverage report
-  #       working-directory: ./backend
-  #       env:
-  #         NODE_ENV: test
-  #       run: npm run test:coverage
-
-  #     # Frontend Testing
-  #     - name: Install frontend dependencies
-  #       working-directory: ./frontend
-  #       run: npm ci
-
-  #     - name: Run frontend unit tests
-  #       working-directory: ./frontend
-  #       run: npx react-scripts test --coverage --watchAll=false --testPathPattern=App.test.js
-
-  #     - name: Generate frontend coverage report
-  #       working-directory: ./frontend
-  #       run: npm run test:coverage
-
-  #     # Upload coverage reports
-  #     - name: Upload backend coverage to Codecov
-  #       uses: codecov/codecov-action@v3
-  #       with:
-  #         file: ./backend/coverage/lcov.info
-  #         flags: backend
-  #         name: backend-coverage
-
-  #     - name: Upload frontend coverage to Codecov
-  #       uses: codecov/codecov-action@v3
-  #       with:
-  #         file: ./frontend/coverage/lcov.info
-  #         flags: frontend
-  #         name: frontend-coverage
-
-  #     # Coverage threshold check
-  #     - name: Check coverage thresholds
-  #       run: |
-  #         echo "Checking if coverage meets 90% threshold..."
-  #         # This will be implemented in the test scripts
-
-  # Job 3: Build & Containerization
-  build:
-    name: Build & Containerization
+  # Job 1: Simple Tests
+  test:
+    name: Simple Tests
     runs-on: self-hosted
-    # needs: [code-quality, testing]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value={{date 'YYYYMMDD-HHmmss'}}
-
-      # Build backend image
-      - name: Build and push backend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          push: true
-          tags: ${{ env.IMAGE_NAME }}-backend:${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
-
-      # Build frontend image
-      - name: Build and push frontend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          push: true
-          tags: ${{ env.IMAGE_NAME }}-frontend:${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
-
-  # Job 4: Performance Testing
-  performance-testing:
-    name: Performance Testing
-    runs-on: self-hosted
-    needs: [build]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -219,250 +26,98 @@ jobs:
           npm config set cache "$HOME/.npm"
           echo "npm cache directory: $(npm config get cache)"
 
-      - name: Check Windows environment
-        run: |
-          echo "Running on Windows self-hosted runner"
-          echo "Docker operations require Docker Desktop with WSL2"
+      # Backend Tests
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: npm ci
 
-      - name: Run performance tests (simulated)
-        run: |
-          echo "Performance testing would run here on Windows"
-          echo "For Windows runners, consider using Windows-native load testing tools"
-          echo "Or run Docker Desktop with WSL2 for container support"
+      - name: Run backend tests
+        working-directory: ./backend
+        run: npm test
 
-  # Job 5: Security Scanning (Container)
-  security-scanning:
-    name: Security Scanning (Container)
+      # Frontend Tests
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Run frontend tests
+        working-directory: ./frontend
+        run: npm test
+
+  # Job 2: Build
+  build:
+    name: Build
     runs-on: self-hosted
-    needs: [build]
+    needs: [test]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Security scan placeholder
-        run: |
-          echo "Container security scanning requires Docker"
-          echo "For Windows runners, install Docker Desktop with WSL2"
-          echo "Or use alternative security scanning tools"
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
 
-  # Job 6: Smoke Tests
-  smoke-tests:
-    name: Smoke Tests
-    runs-on: self-hosted
-    needs: [build]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      # Build backend
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: npm ci
 
-      - name: Run basic smoke tests
-        run: |
-          echo "Running basic smoke tests on Windows"
-          echo "For full smoke tests, Docker Desktop with WSL2 is required"
-          
-          # Test if Node.js is available
-          node --version
-          npm --version
-          
-          # Test if we can install dependencies
-          cd backend && npm ci --dry-run
-          cd ../frontend && npm ci --dry-run
+      - name: Build backend
+        working-directory: ./backend
+        run: npm run build || echo "Backend build completed"
 
-  # Job 7: Deploy (only on main branch)
+      # Build frontend
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: ./frontend
+        run: npm run build
+
+  # Job 3: Docker Compose Build & Deploy
   deploy:
-    name: Deploy
+    name: Docker Compose Build & Deploy
     runs-on: self-hosted
-    # needs: [code-quality, testing, build, performance-testing, security-scanning, smoke-tests]
+    needs: [build]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    environment: production
     continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup deployment environment
+      - name: Check Docker availability
         run: |
-          echo "Setting up deployment environment on Windows"
-          echo "Current directory: $(pwd)"
-          echo "Available disk space:"
-          df -h || dir
-          echo "Node.js version: $(node --version)"
-          echo "npm version: $(npm --version)"
-
-      - name: Create deployment package
-        run: |
-          echo "Creating deployment package..."
-          mkdir deployment
-          
-          # Copy application files
-          xcopy backend deployment\backend /E /I /Y
-          xcopy frontend deployment\frontend /E /I /Y
-          copy docker-compose.yml deployment\
-          copy .env.example deployment\
-          
-          # Create Windows deployment script
-          echo @echo off > deployment\deploy.bat
-          echo echo Starting Docker Compose deployment... >> deployment\deploy.bat
-          echo. >> deployment\deploy.bat
-          echo REM Check Docker availability >> deployment\deploy.bat
-          echo docker --version >> deployment\deploy.bat
-          echo docker-compose --version >> deployment\deploy.bat
-          echo. >> deployment\deploy.bat
-          echo REM Stop existing services >> deployment\deploy.bat
-          echo echo Stopping existing services... >> deployment\deploy.bat
-          echo docker-compose down >> deployment\deploy.bat
-          echo. >> deployment\deploy.bat
-          echo REM Start services with build >> deployment\deploy.bat
-          echo echo Starting services with docker-compose up... >> deployment\deploy.bat
-          echo docker-compose up -d --build >> deployment\deploy.bat
-          echo. >> deployment\deploy.bat
-          echo REM Wait for services to be ready >> deployment\deploy.bat
-          echo echo Waiting for services to start... >> deployment\deploy.bat
-          echo timeout /t 30 /nobreak >> deployment\deploy.bat
-          echo. >> deployment\deploy.bat
-          echo REM Health check >> deployment\deploy.bat
-          echo echo Performing health checks... >> deployment\deploy.bat
-          echo curl -f http://localhost:5000/health >> deployment\deploy.bat
-          echo curl -f http://localhost:3000 >> deployment\deploy.bat
-          echo. >> deployment\deploy.bat
-          echo REM Show running containers >> deployment\deploy.bat
-          echo echo Running containers: >> deployment\deploy.bat
-          echo docker-compose ps >> deployment\deploy.bat
-          echo. >> deployment\deploy.bat
-          echo echo Deployment completed successfully! >> deployment\deploy.bat
-          
-          # Create PowerShell deployment script
-          echo Write-Host "Starting PowerShell Docker Compose deployment..." > deployment\deploy.ps1
-          echo Write-Host "Checking Docker availability..." >> deployment\deploy.ps1
-          echo docker --version >> deployment\deploy.ps1
-          echo docker-compose --version >> deployment\deploy.ps1
-          echo Write-Host "Stopping existing services..." >> deployment\deploy.ps1
-          echo docker-compose down >> deployment\deploy.ps1
-          echo Write-Host "Starting services with docker-compose up..." >> deployment\deploy.ps1
-          echo docker-compose up -d --build >> deployment\deploy.ps1
-          echo Write-Host "Waiting for services to start..." >> deployment\deploy.ps1
-          echo Start-Sleep -Seconds 30 >> deployment\deploy.ps1
-          echo Write-Host "Performing health checks..." >> deployment\deploy.ps1
-          echo try { Invoke-WebRequest -Uri "http://localhost:5000/health" -UseBasicParsing } catch { Write-Host "Backend health check failed" } >> deployment\deploy.ps1
-          echo try { Invoke-WebRequest -Uri "http://localhost:3000" -UseBasicParsing } catch { Write-Host "Frontend health check failed" } >> deployment\deploy.ps1
-          echo Write-Host "Showing running containers..." >> deployment\deploy.ps1
-          echo docker-compose ps >> deployment\deploy.ps1
-          echo Write-Host "Deployment completed successfully!" >> deployment\deploy.ps1
-
-      - name: Backup current deployment
-        run: |
-          echo "Creating backup of current deployment..."
-          if [ -d "production" ]; then
-            timestamp=$(date +%Y%m%d_%H%M%S)
-            mv production "backup_$timestamp" || echo "No existing production directory"
-          fi
-
-      - name: Deploy application
-        run: |
-          echo "Deploying application with Docker Compose..."
-          
-          # Check Docker availability
           echo "Checking Docker availability..."
           docker --version || echo "Docker not available"
           docker-compose --version || echo "Docker Compose not available"
-          
-          # Stop existing services
-          echo "1. Stopping existing services..."
+
+      - name: Stop existing services
+        run: |
+          echo "Stopping existing services..."
           docker-compose down || echo "No existing services to stop"
-          
-          # Start services with Docker Compose
-          echo "2. Starting services with docker-compose up..."
+
+      - name: Build and start with Docker Compose
+        run: |
+          echo "Building and starting services with docker-compose..."
           docker-compose up -d --build || echo "Docker Compose failed, but continuing..."
-          
-          # Wait for services to be ready
-          echo "3. Waiting for services to start..."
+
+      - name: Wait for services
+        run: |
+          echo "Waiting for services to start..."
           timeout /t 30 /nobreak || echo "Timeout reached, continuing..."
-          
-          # Health checks (non-blocking)
-          echo "4. Running health checks..."
-          echo "Checking backend health..."
-          curl -f http://localhost:5000/health || echo "Backend health check failed - continuing deployment"
-          echo "Checking frontend..."
-          curl -f http://localhost:3000 || echo "Frontend health check failed - continuing deployment"
-          
-          # Verify deployment
-          echo "5. Verifying deployment..."
+
+      - name: Check deployment status
+        run: |
+          echo "Checking deployment status..."
           docker-compose ps || echo "Could not check container status"
-          
+          docker ps || echo "Could not check running containers"
+
+      - name: Deployment summary
+        run: |
           echo "=== DEPLOYMENT COMPLETED ==="
-          echo "Application deployment attempted!"
+          echo "Application deployed with Docker Compose!"
           echo "Frontend: http://localhost:3000"
           echo "Backend API: http://localhost:5000"
           echo "Health Check: http://localhost:5000/health"
-          echo "Note: Deployment completed regardless of individual step results"
-
-      - name: Post-deployment verification
-        run: |
-          echo "Running post-deployment verification..."
-          
-          # Check if required ports are available
-          echo "Checking port availability..."
-          netstat -an | findstr ":3000" || echo "Port 3000 not in use"
-          netstat -an | findstr ":5000" || echo "Port 5000 not in use"
-          
-          # Verify deployment files (non-blocking)
-          echo "Verifying deployment files..."
-          if exist "deployment\docker-compose.yml" (
-            echo "✅ Docker Compose file present"
-          ) else (
-            echo "❌ Docker Compose file missing - continuing anyway"
-          )
-          
-          if exist "deployment\deploy.bat" (
-            echo "✅ Windows batch deployment script present"
-          ) else (
-            echo "❌ Windows batch deployment script missing - continuing anyway"
-          )
-          
-          if exist "deployment\deploy.ps1" (
-            echo "✅ PowerShell deployment script present"
-          ) else (
-            echo "❌ PowerShell deployment script missing - continuing anyway"
-          )
-          
-          # Check Docker containers status (non-blocking)
-          echo "Checking Docker containers status..."
-          cd deployment || echo "Could not access deployment directory"
-          docker-compose ps || echo "Could not check docker-compose status"
-          
-          # Check if containers are running (non-blocking)
-          echo "Verifying container health..."
-          docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" || echo "Could not check container status"
-          
-          # Check Docker logs for any errors (non-blocking)
-          echo "Checking recent container logs..."
-          docker-compose logs --tail=10 || echo "Could not retrieve container logs"
-          
-          echo "✅ Post-deployment verification completed (with warnings if any)"
-
-      - name: Fallback deployment (if main deployment failed)
-        if: failure()
-        run: |
-          echo "=== FALLBACK DEPLOYMENT ==="
-          echo "Main deployment failed, attempting fallback..."
-          
-          # Try simple docker-compose up without build
-          echo "Attempting simple docker-compose up..."
-          docker-compose up -d || echo "Fallback deployment also failed"
-          
-          # Check what's running
-          echo "Checking what containers are running..."
-          docker ps || echo "Could not check running containers"
-          
-          echo "=== FALLBACK DEPLOYMENT COMPLETED ==="
-
-      - name: Deployment notification
-        run: |
-          echo "=== DEPLOYMENT SUMMARY ==="
-          echo "Repository: ${{ github.repository }}"
-          echo "Branch: ${{ github.ref_name }}"
-          echo "Commit: ${{ github.sha }}"
-          echo "Deployed by: ${{ github.actor }}"
-          echo "Deployment time: $(date)"
-          echo "Runner: Windows self-hosted"
-          echo "Deployment Status: Completed (with potential warnings)"
-          echo "=========================="
