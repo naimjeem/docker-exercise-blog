@@ -1,0 +1,342 @@
+name: Security Scanning Pipeline
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'  # Run every Monday at 2 AM
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Job 1: Dependency Vulnerability Scan
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    outputs:
+      dependency-scan-passed: ${{ steps.dependency-check.outputs.passed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd backend && npm ci
+          cd ../frontend && npm ci
+
+      - name: Run npm audit (Backend)
+        run: |
+          cd backend
+          npm audit --audit-level=moderate --json > backend-audit.json || true
+          npm audit --audit-level=moderate
+
+      - name: Run npm audit (Frontend)
+        run: |
+          cd frontend
+          npm audit --audit-level=moderate --json > frontend-audit.json || true
+          npm audit --audit-level=moderate
+
+      - name: Check for HIGH/CRITICAL vulnerabilities
+        id: dependency-check
+        run: |
+          echo "🔍 Checking for HIGH and CRITICAL vulnerabilities..."
+          
+          # Check backend vulnerabilities
+          if [ -f backend/backend-audit.json ]; then
+            BACKEND_HIGH=$(jq '[.vulnerabilities | to_entries[] | select(.value.severity == "high")] | length' backend/backend-audit.json)
+            BACKEND_CRITICAL=$(jq '[.vulnerabilities | to_entries[] | select(.value.severity == "critical")] | length' backend/backend-audit.json)
+            
+            echo "Backend - HIGH: $BACKEND_HIGH, CRITICAL: $BACKEND_CRITICAL"
+            
+            if [ "$BACKEND_HIGH" -gt 0 ] || [ "$BACKEND_CRITICAL" -gt 0 ]; then
+              echo "❌ Backend has HIGH or CRITICAL vulnerabilities"
+              echo "passed=false" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+          fi
+          
+          # Check frontend vulnerabilities
+          if [ -f frontend/frontend-audit.json ]; then
+            FRONTEND_HIGH=$(jq '[.vulnerabilities | to_entries[] | select(.value.severity == "high")] | length' frontend/frontend-audit.json)
+            FRONTEND_CRITICAL=$(jq '[.vulnerabilities | to_entries[] | select(.value.severity == "critical")] | length' frontend/frontend-audit.json)
+            
+            echo "Frontend - HIGH: $FRONTEND_HIGH, CRITICAL: $FRONTEND_CRITICAL"
+            
+            if [ "$FRONTEND_HIGH" -gt 0 ] || [ "$FRONTEND_CRITICAL" -gt 0 ]; then
+              echo "❌ Frontend has HIGH or CRITICAL vulnerabilities"
+              echo "passed=false" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+          fi
+          
+          echo "✅ No HIGH or CRITICAL vulnerabilities found"
+          echo "passed=true" >> $GITHUB_OUTPUT
+
+      - name: Upload dependency scan results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dependency-scan-results
+          path: |
+            backend/backend-audit.json
+            frontend/frontend-audit.json
+
+  # Job 2: Container Security Scan
+  container-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    needs: dependency-scan
+    if: needs.dependency-scan.outputs.dependency-scan-passed == 'true'
+    outputs:
+      container-scan-passed: ${{ steps.container-check.outputs.passed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image for scanning
+        run: |
+          docker build -t ${{ env.IMAGE_NAME }}:security-scan ./backend
+          docker build -t ${{ env.IMAGE_NAME }}-frontend:security-scan ./frontend
+
+      - name: Run Trivy vulnerability scanner (Backend)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:security-scan
+          format: 'sarif'
+          output: 'backend-trivy-results.sarif'
+
+      - name: Run Trivy vulnerability scanner (Frontend)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}-frontend:security-scan
+          format: 'sarif'
+          output: 'frontend-trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'backend-trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab (Frontend)
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'frontend-trivy-results.sarif'
+
+      - name: Check for HIGH/CRITICAL vulnerabilities in containers
+        id: container-check
+        run: |
+          echo "🔍 Scanning containers for HIGH and CRITICAL vulnerabilities..."
+          
+          # Scan backend container
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy image --format json --output backend-container-scan.json \
+            ${{ env.IMAGE_NAME }}:security-scan
+          
+          # Scan frontend container
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy image --format json --output frontend-container-scan.json \
+            ${{ env.IMAGE_NAME }}-frontend:security-scan
+          
+          # Check backend container vulnerabilities
+          BACKEND_HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' backend-container-scan.json)
+          BACKEND_CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' backend-container-scan.json)
+          
+          echo "Backend Container - HIGH: $BACKEND_HIGH, CRITICAL: $BACKEND_CRITICAL"
+          
+          # Check frontend container vulnerabilities
+          FRONTEND_HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' frontend-container-scan.json)
+          FRONTEND_CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' frontend-container-scan.json)
+          
+          echo "Frontend Container - HIGH: $FRONTEND_HIGH, CRITICAL: $FRONTEND_CRITICAL"
+          
+          if [ "$BACKEND_HIGH" -gt 0 ] || [ "$BACKEND_CRITICAL" -gt 0 ] || [ "$FRONTEND_HIGH" -gt 0 ] || [ "$FRONTEND_CRITICAL" -gt 0 ]; then
+            echo "❌ HIGH or CRITICAL vulnerabilities found in containers"
+            echo "passed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          echo "✅ No HIGH or CRITICAL vulnerabilities found in containers"
+          echo "passed=true" >> $GITHUB_OUTPUT
+
+      - name: Upload container scan results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: container-scan-results
+          path: |
+            backend-trivy-results.sarif
+            frontend-trivy-results.sarif
+            backend-container-scan.json
+            frontend-container-scan.json
+
+  # Job 3: SAST (Static Application Security Testing)
+  sast-scan:
+    name: SAST Security Scan
+    runs-on: ubuntu-latest
+    needs: dependency-scan
+    if: needs.dependency-scan.outputs.dependency-scan-passed == 'true'
+    outputs:
+      sast-scan-passed: ${{ steps.sast-check.outputs.passed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd backend && npm ci
+          cd ../frontend && npm ci
+
+      - name: Run ESLint security rules (Backend)
+        run: |
+          cd backend
+          npx eslint . --ext .js --config .eslintrc.security.js --format json --output-file backend-security-eslint.json || true
+          npx eslint . --ext .js --config .eslintrc.security.js --format stylish || true
+
+      - name: Run ESLint security rules (Frontend)
+        run: |
+          cd frontend
+          npx eslint src --ext .js,.jsx --config .eslintrc.security.js --format json --output-file frontend-security-eslint.json || true
+          npx eslint src --ext .js,.jsx --config .eslintrc.security.js --format stylish || true
+
+      - name: Run Semgrep SAST scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/owasp-top-ten
+            p/javascript
+            p/nodejs
+          generateSarif: "1"
+
+      - name: Upload Semgrep results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+
+      - name: Check SAST results
+        id: sast-check
+        run: |
+          echo "🔍 Analyzing SAST scan results..."
+          
+          # Check ESLint security findings
+          BACKEND_SECURITY_ISSUES=0
+          FRONTEND_SECURITY_ISSUES=0
+          
+          if [ -f backend/backend-security-eslint.json ]; then
+            BACKEND_SECURITY_ISSUES=$(jq '[.[] | select(.severity == 2)] | length' backend/backend-security-eslint.json)
+          fi
+          
+          if [ -f frontend/frontend-security-eslint.json ]; then
+            FRONTEND_SECURITY_ISSUES=$(jq '[.[] | select(.severity == 2)] | length' frontend/frontend-security-eslint.json)
+          fi
+          
+          echo "Backend security issues: $BACKEND_SECURITY_ISSUES"
+          echo "Frontend security issues: $FRONTEND_SECURITY_ISSUES"
+          
+          # Check Semgrep results
+          if [ -f semgrep.sarif ]; then
+            SEMGREP_HIGH=$(jq '[.runs[].results[] | select(.level == "error")] | length' semgrep.sarif)
+            echo "Semgrep HIGH severity issues: $SEMGREP_HIGH"
+            
+            if [ "$SEMGREP_HIGH" -gt 0 ]; then
+              echo "❌ HIGH severity security issues found by Semgrep"
+              echo "passed=false" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+          fi
+          
+          if [ "$BACKEND_SECURITY_ISSUES" -gt 0 ] || [ "$FRONTEND_SECURITY_ISSUES" -gt 0 ]; then
+            echo "❌ Security issues found in code"
+            echo "passed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          echo "✅ No HIGH severity security issues found"
+          echo "passed=true" >> $GITHUB_OUTPUT
+
+      - name: Upload SAST scan results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sast-scan-results
+          path: |
+            backend/backend-security-eslint.json
+            frontend/frontend-security-eslint.json
+            semgrep.sarif
+
+  # Job 4: Generate Security Report
+  security-report:
+    name: Generate Security Report
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, container-scan, sast-scan]
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all scan results
+        uses: actions/download-artifact@v4
+        with:
+          path: scan-results
+
+      - name: Generate security report
+        run: |
+          echo "## 🔒 Security Scan Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Scan Date:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Scan Results:" >> $GITHUB_STEP_SUMMARY
+          echo "- Dependency Scan: ${{ needs.dependency-scan.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Container Scan: ${{ needs.container-scan.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- SAST Scan: ${{ needs.sast-scan.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.dependency-scan.result }}" == "success" ] && [ "${{ needs.container-scan.result }}" == "success" ] && [ "${{ needs.sast-scan.result }}" == "success" ]; then
+            echo "**Overall Status:** ✅ All security scans passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Overall Status:** ❌ Security issues detected" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Recommendations:" >> $GITHUB_STEP_SUMMARY
+          echo "- Review and address any HIGH or CRITICAL vulnerabilities" >> $GITHUB_STEP_SUMMARY
+          echo "- Update dependencies regularly" >> $GITHUB_STEP_SUMMARY
+          echo "- Monitor security advisories for used packages" >> $GITHUB_STEP_SUMMARY
+          echo "- Implement automated security scanning in CI/CD pipeline" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify security team
+        if: needs.dependency-scan.result == 'failure' || needs.container-scan.result == 'failure' || needs.sast-scan.result == 'failure'
+        run: |
+          echo "🚨 Security scan failed - notifying security team"
+          # Add notification logic here (Slack, email, etc.)
