@@ -53,13 +53,18 @@ jobs:
           docker build -t "${{ env.FRONTEND_IMAGE }}:$VERSION" ./frontend || echo "Frontend build failed"
           docker push "${{ env.FRONTEND_IMAGE }}:$VERSION" || echo "Frontend push failed"
 
+      - name: Create .env file from template
+        run: |
+          echo "Creating .env file from env.example..."
+          Copy-Item env.example .env
+          echo "Created .env file with default values"
+
       - name: Update .env with new RELEASE_VERSION
         run: |
           echo "Setting RELEASE_VERSION=${{ env.RELEASE_VERSION }} in .env"
 
-          # Ensure .env exists and update it using PowerShell
+          # Update .env with RELEASE_VERSION using PowerShell
           powershell -Command "
-            if (-not (Test-Path .env)) { New-Item -Path .env -ItemType File }
             Get-Content .env | Where-Object { $_ -notmatch '^RELEASE_VERSION=' } | Out-File .env.tmp
             Add-Content .env.tmp 'RELEASE_VERSION=${{ env.RELEASE_VERSION }}'
             Move-Item .env.tmp .env
