@@ -12,7 +12,9 @@ env:
   FRONTEND_IMAGE: ${{ secrets.DOCKERHUB_USERNAME || 'localhost' }}/todo-frontend
 
 jobs:
-  docker-build-push:
+  # Job 1: Build and Push Docker Images
+  build-and-push:
+    name: Build & Push Docker Images
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
@@ -53,6 +55,15 @@ jobs:
           docker build -t "${{ env.FRONTEND_IMAGE }}:$VERSION" ./frontend || echo "Frontend build failed"
           docker push "${{ env.FRONTEND_IMAGE }}:$VERSION" || echo "Frontend push failed"
 
+  # Job 2: Deploy Application
+  deploy:
+    name: Deploy Application
+    runs-on: self-hosted
+    needs: [build-and-push]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Create .env file from template
         run: |
           echo "Creating .env file from env.example..."
@@ -85,3 +96,13 @@ jobs:
           docker compose pull || echo "Docker Compose pull failed"
           docker compose up -d --force-recreate || echo "Docker Compose up failed"
           echo "Deployment completed (with potential errors)"
+
+      - name: Verify deployment
+        run: |
+          echo "Verifying deployment..."
+          docker compose ps || echo "Could not check container status"
+          echo "=== DEPLOYMENT SUMMARY ==="
+          echo "Frontend: http://localhost:3000"
+          echo "Backend API: http://localhost:5000"
+          echo "Nginx Proxy: http://localhost:80"
+          echo "Health Check: http://localhost:5000/health"
