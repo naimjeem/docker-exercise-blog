@@ -35,18 +35,21 @@ jobs:
         run: |
           echo "RELEASE_VERSION=latest" >> $GITHUB_ENV
           echo "Using version: latest"
+          echo "RELEASE_VERSION value: $RELEASE_VERSION"
 
       - name: Build & Push Backend
         run: |
-          echo "Building backend image: ${{ env.BACKEND_IMAGE }}:${{ env.RELEASE_VERSION }}"
-          docker build -t "${{ env.BACKEND_IMAGE }}:${{ env.RELEASE_VERSION }}" ./backend || echo "Backend build failed"
-          docker push "${{ env.BACKEND_IMAGE }}:${{ env.RELEASE_VERSION }}" || echo "Backend push failed"
+          VERSION=${{ env.RELEASE_VERSION || 'latest' }}
+          echo "Building backend image: ${{ env.BACKEND_IMAGE }}:$VERSION"
+          docker build -t "${{ env.BACKEND_IMAGE }}:$VERSION" ./backend || echo "Backend build failed"
+          docker push "${{ env.BACKEND_IMAGE }}:$VERSION" || echo "Backend push failed"
 
       - name: Build & Push Frontend
         run: |
-          echo "Building frontend image: ${{ env.FRONTEND_IMAGE }}:${{ env.RELEASE_VERSION }}"
-          docker build -t "${{ env.FRONTEND_IMAGE }}:${{ env.RELEASE_VERSION }}" ./frontend || echo "Frontend build failed"
-          docker push "${{ env.FRONTEND_IMAGE }}:${{ env.RELEASE_VERSION }}" || echo "Frontend push failed"
+          VERSION=${{ env.RELEASE_VERSION || 'latest' }}
+          echo "Building frontend image: ${{ env.FRONTEND_IMAGE }}:$VERSION"
+          docker build -t "${{ env.FRONTEND_IMAGE }}:$VERSION" ./frontend || echo "Frontend build failed"
+          docker push "${{ env.FRONTEND_IMAGE }}:$VERSION" || echo "Frontend push failed"
 
       - name: Update .env with new RELEASE_VERSION
         run: |
