@@ -39,14 +39,16 @@ jobs:
 
       - name: Build & Push Backend
         run: |
-          VERSION=${{ env.RELEASE_VERSION || 'latest' }}
+          $VERSION = "${{ env.RELEASE_VERSION }}"
+          if ([string]::IsNullOrEmpty($VERSION)) { $VERSION = "latest" }
           echo "Building backend image: ${{ env.BACKEND_IMAGE }}:$VERSION"
           docker build -t "${{ env.BACKEND_IMAGE }}:$VERSION" ./backend || echo "Backend build failed"
           docker push "${{ env.BACKEND_IMAGE }}:$VERSION" || echo "Backend push failed"
 
       - name: Build & Push Frontend
         run: |
-          VERSION=${{ env.RELEASE_VERSION || 'latest' }}
+          $VERSION = "${{ env.RELEASE_VERSION }}"
+          if ([string]::IsNullOrEmpty($VERSION)) { $VERSION = "latest" }
           echo "Building frontend image: ${{ env.FRONTEND_IMAGE }}:$VERSION"
           docker build -t "${{ env.FRONTEND_IMAGE }}:$VERSION" ./frontend || echo "Frontend build failed"
           docker push "${{ env.FRONTEND_IMAGE }}:$VERSION" || echo "Frontend push failed"
