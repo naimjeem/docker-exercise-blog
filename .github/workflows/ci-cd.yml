@@ -67,9 +67,16 @@ jobs:
             Get-Content .env
           "
 
+      - name: Clean up existing containers
+        run: |
+          echo "Cleaning up existing containers..."
+          docker compose down --remove-orphans || echo "No existing containers to remove"
+          docker container prune -f || echo "Container cleanup failed"
+          docker network prune -f || echo "Network cleanup failed"
+
       - name: Deploy locally with Docker Compose
         run: |
           echo "Deploying with Docker Compose..."
           docker compose pull || echo "Docker Compose pull failed"
-          docker compose up -d || echo "Docker Compose up failed"
+          docker compose up -d --force-recreate || echo "Docker Compose up failed"
           echo "Deployment completed (with potential errors)"
