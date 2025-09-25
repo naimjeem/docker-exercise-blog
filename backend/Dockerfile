@@ -18,7 +18,7 @@ COPY package*.json ./
 
 # Install dependencies with security flags
 RUN npm ci --no-audit --no-fund && \
-    npm prune --production && \
+    npm prune --omit=dev && \
     npm cache clean --force && \
     rm -rf /tmp/*
 
