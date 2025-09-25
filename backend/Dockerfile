@@ -17,7 +17,8 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies with security flags
-RUN npm ci --only=production --no-audit --no-fund && \
+RUN npm ci --no-audit --no-fund && \
+    npm prune --production && \
     npm cache clean --force && \
     rm -rf /tmp/*
 
