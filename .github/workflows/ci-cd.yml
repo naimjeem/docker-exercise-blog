@@ -35,13 +35,14 @@ jobs:
 
       - name: Set Release Version
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "RELEASE_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-            echo "Using tag version: ${GITHUB_REF#refs/tags/}"
-          else
+          if ("${{ github.ref }}" -like "refs/tags/*") {
+            $tagVersion = "${{ github.ref }}" -replace "refs/tags/", ""
+            echo "RELEASE_VERSION=$tagVersion" >> $GITHUB_ENV
+            echo "Using tag version: $tagVersion"
+          } else {
             echo "RELEASE_VERSION=latest" >> $GITHUB_ENV
             echo "Using version: latest"
-          fi
+          }
           echo "RELEASE_VERSION value: $RELEASE_VERSION"
 
       - name: Build & Push Backend
@@ -77,13 +78,14 @@ jobs:
 
       - name: Set Release Version for Deploy
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "RELEASE_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-            echo "Using tag version for deploy: ${GITHUB_REF#refs/tags/}"
-          else
+          if ("${{ github.ref }}" -like "refs/tags/*") {
+            $tagVersion = "${{ github.ref }}" -replace "refs/tags/", ""
+            echo "RELEASE_VERSION=$tagVersion" >> $GITHUB_ENV
+            echo "Using tag version for deploy: $tagVersion"
+          } else {
             echo "RELEASE_VERSION=latest" >> $GITHUB_ENV
             echo "Using latest version for deploy"
-          fi
+          }
 
       - name: Update .env with new RELEASE_VERSION
         run: |
