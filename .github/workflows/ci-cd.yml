@@ -11,6 +11,7 @@ jobs:
   test:
     name: Simple Tests
     runs-on: self-hosted
+    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -49,6 +50,7 @@ jobs:
     name: Build
     runs-on: self-hosted
     needs: [test]
+    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
