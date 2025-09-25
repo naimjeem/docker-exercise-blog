@@ -23,10 +23,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: |
-            backend/package-lock.json
-            frontend/package-lock.json
+
+      - name: Setup npm cache
+        run: |
+          echo "Setting up npm cache for Windows..."
+          npm config set cache "$HOME/.npm"
+          echo "npm cache directory: $(npm config get cache)"
 
       # Backend Code Quality
       - name: Install backend dependencies
@@ -85,10 +87,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: |
-            backend/package-lock.json
-            frontend/package-lock.json
+
+      - name: Setup npm cache
+        run: |
+          echo "Setting up npm cache for Windows..."
+          npm config set cache "$HOME/.npm"
+          echo "npm cache directory: $(npm config get cache)"
 
       # Backend Testing
       - name: Install backend dependencies
@@ -208,6 +212,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+
+      - name: Setup npm cache
+        run: |
+          echo "Setting up npm cache for Windows..."
+          npm config set cache "$HOME/.npm"
+          echo "npm cache directory: $(npm config get cache)"
 
       - name: Check Windows environment
         run: |
