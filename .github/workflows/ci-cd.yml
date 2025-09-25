@@ -21,35 +21,35 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-       - name: Set Release Version
-         run: |
-           echo "RELEASE_VERSION=latest" >> $GITHUB_ENV
-           echo "Using version: latest"
+      - name: Set Release Version
+        run: |
+          echo "RELEASE_VERSION=latest" >> $GITHUB_ENV
+          echo "Using version: latest"
 
-       - name: Build & Push Backend
-         run: |
-           docker build -t "${{ env.BACKEND_IMAGE }}:${{ env.RELEASE_VERSION }}" ./backend
-           docker push "${{ env.BACKEND_IMAGE }}:${{ env.RELEASE_VERSION }}"
+      - name: Build & Push Backend
+        run: |
+          docker build -t "${{ env.BACKEND_IMAGE }}:${{ env.RELEASE_VERSION }}" ./backend
+          docker push "${{ env.BACKEND_IMAGE }}:${{ env.RELEASE_VERSION }}"
 
-       - name: Build & Push Frontend
-         run: |
-           docker build -t "${{ env.FRONTEND_IMAGE }}:${{ env.RELEASE_VERSION }}" ./frontend
-           docker push "${{ env.FRONTEND_IMAGE }}:${{ env.RELEASE_VERSION }}"
+      - name: Build & Push Frontend
+        run: |
+          docker build -t "${{ env.FRONTEND_IMAGE }}:${{ env.RELEASE_VERSION }}" ./frontend
+          docker push "${{ env.FRONTEND_IMAGE }}:${{ env.RELEASE_VERSION }}"
 
-       - name: Update .env with new RELEASE_VERSION
-         run: |
-           echo "Setting RELEASE_VERSION=${{ env.RELEASE_VERSION }} in .env"
+      - name: Update .env with new RELEASE_VERSION
+        run: |
+          echo "Setting RELEASE_VERSION=${{ env.RELEASE_VERSION }} in .env"
 
-           # Ensure .env exists
-           if not exist .env echo. > .env
+          # Ensure .env exists
+          if not exist .env echo. > .env
 
-           # Remove any existing RELEASE_VERSION line and add new one
-           findstr /v "^RELEASE_VERSION=" .env > .env.tmp 2>nul || echo. > .env.tmp
-           echo RELEASE_VERSION=${{ env.RELEASE_VERSION }} >> .env.tmp
-           move .env.tmp .env
+          # Remove any existing RELEASE_VERSION line and add new one
+          findstr /v "^RELEASE_VERSION=" .env > .env.tmp 2>nul || echo. > .env.tmp
+          echo RELEASE_VERSION=${{ env.RELEASE_VERSION }} >> .env.tmp
+          move .env.tmp .env
 
-           echo "Final .env:"
-           type .env
+          echo "Final .env:"
+          type .env
 
       - name: Deploy locally with Docker Compose
         run: |
