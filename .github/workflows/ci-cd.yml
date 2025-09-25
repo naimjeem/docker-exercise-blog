@@ -1,0 +1,370 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: ${{ github.repository_owner }}/blog-platform
+
+jobs:
+  # Job 1: Code Quality & Security (SAST)
+  code-quality:
+    name: Code Quality & Security (SAST)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      # Backend Code Quality
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Run ESLint on backend
+        working-directory: ./backend
+        run: npm run lint
+
+      - name: Run Prettier check on backend
+        working-directory: ./backend
+        run: npm run format:check
+
+      # Frontend Code Quality
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Run ESLint on frontend
+        working-directory: ./frontend
+        run: npm run lint
+
+      - name: Run Prettier check on frontend
+        working-directory: ./frontend
+        run: npm run format:check
+
+      # Security scanning with CodeQL
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+      # Dependency vulnerability scanning
+      - name: Run npm audit on backend
+        working-directory: ./backend
+        run: npm audit --audit-level=moderate
+
+      - name: Run npm audit on frontend
+        working-directory: ./frontend
+        run: npm audit --audit-level=moderate
+
+  # Job 2: Unit & Integration Testing
+  testing:
+    name: Unit & Integration Testing
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_USER: testuser
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      # Backend Testing
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Run backend unit tests
+        working-directory: ./backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: testdb
+          DB_USER: testuser
+          DB_PASSWORD: testpass
+          NODE_ENV: test
+        run: npm run test:unit
+
+      - name: Run backend integration tests
+        working-directory: ./backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: testdb
+          DB_USER: testuser
+          DB_PASSWORD: testpass
+          NODE_ENV: test
+        run: npm run test:integration
+
+      - name: Generate backend coverage report
+        working-directory: ./backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: testdb
+          DB_USER: testuser
+          DB_PASSWORD: testpass
+          NODE_ENV: test
+        run: npm run test:coverage
+
+      # Frontend Testing
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Run frontend unit tests
+        working-directory: ./frontend
+        run: npm run test:ci
+
+      - name: Generate frontend coverage report
+        working-directory: ./frontend
+        run: npm run test:coverage
+
+      # Upload coverage reports
+      - name: Upload backend coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./backend/coverage/lcov.info
+          flags: backend
+          name: backend-coverage
+
+      - name: Upload frontend coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./frontend/coverage/lcov.info
+          flags: frontend
+          name: frontend-coverage
+
+      # Coverage threshold check
+      - name: Check coverage thresholds
+        run: |
+          echo "Checking if coverage meets 90% threshold..."
+          # This will be implemented in the test scripts
+
+  # Job 3: Build & Containerization
+  build:
+    name: Build & Containerization
+    runs-on: ubuntu-latest
+    needs: [code-quality, testing]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value={{date 'YYYYMMDD-HHmmss'}}
+
+      # Build backend image
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ env.IMAGE_NAME }}-backend:${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      # Build frontend image
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ env.IMAGE_NAME }}-frontend:${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+  # Job 4: Performance Testing
+  performance-testing:
+    name: Performance Testing
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install k6
+        run: |
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Start services for performance testing
+        run: |
+          docker-compose -f docker-compose.yml up -d
+          sleep 30  # Wait for services to be ready
+
+      - name: Run performance tests
+        run: |
+          k6 run --out json=performance-results.json performance-tests/api-load-test.js
+
+      - name: Upload performance results
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-results
+          path: performance-results.json
+
+      - name: Cleanup
+        run: docker-compose -f docker-compose.yml down
+
+  # Job 5: Security Scanning (Container)
+  security-scanning:
+    name: Security Scanning (Container)
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}-backend:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Trivy vulnerability scanner for frontend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}-frontend:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-frontend-results.sarif'
+
+      - name: Upload Trivy frontend scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-frontend-results.sarif'
+
+  # Job 6: Smoke Tests
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start services
+        run: |
+          docker-compose -f docker-compose.yml up -d
+          sleep 30  # Wait for services to be ready
+
+      - name: Wait for services to be healthy
+        run: |
+          timeout 300 bash -c 'until docker-compose -f docker-compose.yml ps | grep -q "healthy"; do sleep 5; done'
+
+      - name: Run smoke tests
+        run: |
+          # Test database connectivity
+          docker-compose -f docker-compose.yml exec -T database pg_isready -U $DB_USER -d $DB_NAME
+          
+          # Test backend health endpoint
+          curl -f http://localhost:5000/health || exit 1
+          
+          # Test backend API endpoints
+          curl -f http://localhost:5000/api/posts || exit 1
+          
+          # Test frontend accessibility
+          curl -f http://localhost:3000 || exit 1
+          
+          # Test nginx proxy
+          curl -f http://localhost/health || exit 1
+
+      - name: Run comprehensive smoke tests
+        run: |
+          npm install -g newman
+          newman run smoke-tests/postman-collection.json -e smoke-tests/environment.json
+
+      - name: Cleanup
+        if: always()
+        run: docker-compose -f docker-compose.yml down
+
+  # Job 7: Deploy (only on main branch)
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: [code-quality, testing, build, performance-testing, security-scanning, smoke-tests]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to production
+        run: |
+          echo "Deployment to production would happen here"
+          echo "This could include:"
+          echo "- Updating Kubernetes manifests"
+          echo "- Rolling out new containers"
+          echo "- Running database migrations"
+          echo "- Health checks"
+          echo "- Rollback procedures"

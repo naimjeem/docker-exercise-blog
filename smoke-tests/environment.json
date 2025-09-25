@@ -1,0 +1,12 @@
+{
+  "id": "smoke-test-environment",
+  "name": "Smoke Test Environment",
+  "values": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment"
+}
