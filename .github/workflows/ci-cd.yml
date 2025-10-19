@@ -12,10 +12,38 @@ env:
   FRONTEND_IMAGE: ${{ secrets.DOCKERHUB_USERNAME || 'localhost' }}/todo-frontend
 
 jobs:
+  # Security Scan Job
+  security-scan:
+    runs-on: [self-hosted, linux, x64]
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
   # Job 1: Build and Push Docker Images
   build-and-push:
     name: Build & Push Docker Images
     runs-on: self-hosted
+    needs: [security-scan]
     steps:
       - uses: actions/checkout@v4
 
