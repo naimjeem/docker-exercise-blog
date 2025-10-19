@@ -35,28 +35,28 @@ jobs:
 
       - name: Set Release Version
         run: |
-          if ("${{ github.ref }}" -like "refs/tags/*") {
-            $tagVersion = "${{ github.ref }}" -replace "refs/tags/", ""
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            tagVersion=$(echo "${{ github.ref }}" | sed 's/refs\/tags\///')
             echo "RELEASE_VERSION=$tagVersion" >> $GITHUB_ENV
             echo "Using tag version: $tagVersion"
-          } else {
+          else
             echo "RELEASE_VERSION=latest" >> $GITHUB_ENV
             echo "Using version: latest"
-          }
+          fi
           echo "RELEASE_VERSION value: $RELEASE_VERSION"
 
       - name: Build & Push Backend
         run: |
-          $VERSION = "${{ env.RELEASE_VERSION }}"
-          if ([string]::IsNullOrEmpty($VERSION)) { $VERSION = "latest" }
+          VERSION="${{ env.RELEASE_VERSION }}"
+          if [ -z "$VERSION" ]; then VERSION="latest"; fi
           echo "Building backend image: ${{ env.BACKEND_IMAGE }}:$VERSION"
           docker build -t "${{ env.BACKEND_IMAGE }}:$VERSION" ./backend || echo "Backend build failed"
           docker push "${{ env.BACKEND_IMAGE }}:$VERSION" || echo "Backend push failed"
 
       - name: Build & Push Frontend
         run: |
-          $VERSION = "${{ env.RELEASE_VERSION }}"
-          if ([string]::IsNullOrEmpty($VERSION)) { $VERSION = "latest" }
+          VERSION="${{ env.RELEASE_VERSION }}"
+          if [ -z "$VERSION" ]; then VERSION="latest"; fi
           echo "Building frontend image: ${{ env.FRONTEND_IMAGE }}:$VERSION"
           docker build -t "${{ env.FRONTEND_IMAGE }}:$VERSION" ./frontend || echo "Frontend build failed"
           docker push "${{ env.FRONTEND_IMAGE }}:$VERSION" || echo "Frontend push failed"
@@ -73,32 +73,30 @@ jobs:
       - name: Create .env file from template
         run: |
           echo "Creating .env file from env.example..."
-          Copy-Item env.example .env
+          cp env.example .env
           echo "Created .env file with default values"
 
       - name: Set Release Version for Deploy
         run: |
-          if ("${{ github.ref }}" -like "refs/tags/*") {
-            $tagVersion = "${{ github.ref }}" -replace "refs/tags/", ""
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            tagVersion=$(echo "${{ github.ref }}" | sed 's/refs\/tags\///')
             echo "RELEASE_VERSION=$tagVersion" >> $GITHUB_ENV
             echo "Using tag version for deploy: $tagVersion"
-          } else {
+          else
             echo "RELEASE_VERSION=latest" >> $GITHUB_ENV
             echo "Using latest version for deploy"
-          }
+          fi
 
       - name: Update .env with new RELEASE_VERSION
         run: |
           echo "Setting RELEASE_VERSION=${{ env.RELEASE_VERSION }} in .env"
-
-          # Update .env with RELEASE_VERSION using PowerShell
-          powershell -Command "
-            Get-Content .env | Where-Object { $_ -notmatch '^RELEASE_VERSION=' } | Out-File .env.tmp
-            Add-Content .env.tmp 'RELEASE_VERSION=${{ env.RELEASE_VERSION }}'
-            Move-Item .env.tmp .env
-            Write-Host 'Final .env:'
-            Get-Content .env
-          "
+          
+          # Update .env with RELEASE_VERSION using bash
+          grep -v '^RELEASE_VERSION=' .env > .env.tmp
+          echo "RELEASE_VERSION=${{ env.RELEASE_VERSION }}" >> .env.tmp
+          mv .env.tmp .env
+          echo "Final .env:"
+          cat .env
 
       - name: Clean up existing containers
         run: |
